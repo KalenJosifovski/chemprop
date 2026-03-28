@@ -10,7 +10,7 @@ import torch
 from torch import Tensor, nn, optim
 
 from chemprop.conf import LIGHTNING_26_COMPAT_ARGS
-from chemprop.data import BatchMolGraph, MulticomponentTrainingBatch, TrainingBatch
+from chemprop.data import BatchMolGraph, FPPoolBatch, MulticomponentTrainingBatch, TrainingBatch
 from chemprop.nn import Aggregation, ChempropMetric, MessagePassing, Predictor
 from chemprop.nn.transforms import ScaleTransform
 from chemprop.schedulers import build_NoamLike_LRSched
@@ -124,35 +124,89 @@ class MPNN(pl.LightningModule):
         return self.predictor.criterion
 
     def fingerprint(
-        self, bmg: BatchMolGraph, V_d: Tensor | None = None, X_d: Tensor | None = None
+        self,
+        bmg: BatchMolGraph,
+        V_d: Tensor | None = None,
+        X_d: Tensor | None = None,
+        fppool_batch: FPPoolBatch | None = None,
     ) -> Tensor:
-        """the learned fingerprints for the input molecules"""
+        """The learned fingerprints for the input molecules.
+
+        Parameters
+        ----------
+        bmg : BatchMolGraph
+            The batched molecular graph.
+        V_d : Tensor | None, default=None
+            Optional atom descriptors concatenated after message passing.
+        X_d : Tensor | None, default=None
+            Optional molecule descriptors concatenated after aggregation.
+        fppool_batch : FPPoolBatch | None, default=None
+            Optional FPPool aggregation metadata aligned to the batched atom ordering.
+        """
         H_v = self.message_passing(bmg, V_d)
-        H = self.agg(H_v, bmg.batch)
+        if fppool_batch is not None and fppool_batch.atom_fp.device != H_v.device:
+            fppool_batch = fppool_batch.to(H_v.device)
+        H = self.agg(H_v, bmg.batch, fppool_batch=fppool_batch)
         H = self.bn(H)
 
         return H if X_d is None else torch.cat((H, self.X_d_transform(X_d)), dim=1)
 
     def encoding(
-        self, bmg: BatchMolGraph, V_d: Tensor | None = None, X_d: Tensor | None = None, i: int = -1
+        self,
+        bmg: BatchMolGraph,
+        V_d: Tensor | None = None,
+        X_d: Tensor | None = None,
+        i: int = -1,
+        fppool_batch: FPPoolBatch | None = None,
     ) -> Tensor:
-        """Calculate the :attr:`i`-th hidden representation"""
-        return self.predictor.encode(self.fingerprint(bmg, V_d, X_d), i)
+        """Calculate the :attr:`i`-th hidden representation.
+
+        Parameters
+        ----------
+        bmg : BatchMolGraph
+            The batched molecular graph.
+        V_d : Tensor | None, default=None
+            Optional atom descriptors concatenated after message passing.
+        X_d : Tensor | None, default=None
+            Optional molecule descriptors concatenated after aggregation.
+        i : int, default=-1
+            The stop index of the predictor blocks used to encode the aggregated fingerprint.
+        fppool_batch : FPPoolBatch | None, default=None
+            Optional FPPool aggregation metadata aligned to the batched atom ordering.
+        """
+        return self.predictor.encode(self.fingerprint(bmg, V_d, X_d, fppool_batch), i)
 
     def forward(
-        self, bmg: BatchMolGraph, V_d: Tensor | None = None, X_d: Tensor | None = None
+        self,
+        bmg: BatchMolGraph,
+        V_d: Tensor | None = None,
+        X_d: Tensor | None = None,
+        fppool_batch: FPPoolBatch | None = None,
     ) -> Tensor:
-        """Generate predictions for the input molecules/reactions"""
-        return self.predictor(self.fingerprint(bmg, V_d, X_d))
+        """Generate predictions for the input molecules/reactions.
+
+        Parameters
+        ----------
+        bmg : BatchMolGraph
+            The batched molecular graph.
+        V_d : Tensor | None, default=None
+            Optional atom descriptors concatenated after message passing.
+        X_d : Tensor | None, default=None
+            Optional molecule descriptors concatenated after aggregation.
+        fppool_batch : FPPoolBatch | None, default=None
+            Optional FPPool aggregation metadata aligned to the batched atom ordering.
+        """
+        return self.predictor(self.fingerprint(bmg, V_d, X_d, fppool_batch))
 
     def training_step(self, batch: BatchType, batch_idx):
         batch_size = self.get_batch_size(batch)
-        bmg, V_d, X_d, targets, weights, lt_mask, gt_mask, *_ = batch
+        fppool_batch = batch[7] if len(batch) > 7 else None
+        bmg, V_d, X_d, targets, weights, lt_mask, gt_mask = batch[:7]
 
         mask = targets.isfinite()
         targets = targets.nan_to_num(nan=0.0)
 
-        Z = self.fingerprint(bmg, V_d, X_d)
+        Z = self.fingerprint(bmg, V_d, X_d, fppool_batch)
         preds = self.predictor.train_step(Z)
         l = self.criterion(preds, targets, mask, weights, lt_mask, gt_mask)
 
@@ -171,12 +225,13 @@ class MPNN(pl.LightningModule):
         self._evaluate_batch(batch, "val")
 
         batch_size = self.get_batch_size(batch)
-        bmg, V_d, X_d, targets, weights, lt_mask, gt_mask, *_ = batch
+        fppool_batch = batch[7] if len(batch) > 7 else None
+        bmg, V_d, X_d, targets, weights, lt_mask, gt_mask = batch[:7]
 
         mask = targets.isfinite()
         targets = targets.nan_to_num(nan=0.0)
 
-        Z = self.fingerprint(bmg, V_d, X_d)
+        Z = self.fingerprint(bmg, V_d, X_d, fppool_batch)
         preds = self.predictor.train_step(Z)
         self.metrics[-1](preds, targets, mask, weights, lt_mask, gt_mask)
         self.log("val_loss", self.metrics[-1], batch_size=batch_size, prog_bar=True)
@@ -186,11 +241,12 @@ class MPNN(pl.LightningModule):
 
     def _evaluate_batch(self, batch: BatchType, label: str) -> None:
         batch_size = self.get_batch_size(batch)
-        bmg, V_d, X_d, targets, weights, lt_mask, gt_mask, *_ = batch
+        fppool_batch = batch[7] if len(batch) > 7 else None
+        bmg, V_d, X_d, targets, weights, lt_mask, gt_mask = batch[:7]
 
         mask = targets.isfinite()
         targets = targets.nan_to_num(nan=0.0)
-        preds = self(bmg, V_d, X_d)
+        preds = self(bmg, V_d, X_d, fppool_batch)
         weights = torch.ones_like(weights)
 
         if self.predictor.n_targets > 1:
@@ -201,9 +257,10 @@ class MPNN(pl.LightningModule):
             self.log(f"{label}/{m.alias}", m, batch_size=batch_size)
 
     def predict_step(self, batch: BatchType, batch_idx: int, dataloader_idx: int = 0) -> Tensor:
-        bmg, V_d, X_d, *_ = batch
+        fppool_batch = batch[7] if len(batch) > 7 else None
+        bmg, V_d, X_d = batch[:3]
 
-        return self(bmg, V_d, X_d)
+        return self(bmg, V_d, X_d, fppool_batch)
 
     def configure_optimizers(self):
         opt = optim.Adam(self.parameters(), self.init_lr)

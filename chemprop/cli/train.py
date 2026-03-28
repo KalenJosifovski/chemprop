@@ -1207,7 +1207,9 @@ def build_splits(args, format_kwargs, featurization_kwargs):
             }
             for train, val, test in zip(train_indices, val_indices, test_indices)
         ]
-        with open(Path(args.output_dir) / "splits.json", "w") as f:
+        output_dir = Path(args.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        with open(output_dir / "splits.json", "w") as f:
             json.dump(splits, f)
 
         if args.save_data_splits:

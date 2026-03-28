@@ -4,7 +4,7 @@ from typing import Iterable
 import torch
 from torch import Tensor
 
-from chemprop.data import BatchMolGraph, MulticomponentTrainingBatch
+from chemprop.data import BatchMolGraph, FPPoolBatch, MulticomponentTrainingBatch
 from chemprop.models.model import MPNN
 from chemprop.nn import Aggregation, MulticomponentMessagePassing, Predictor
 from chemprop.nn.metrics import ChempropMetric
@@ -46,9 +46,24 @@ class MulticomponentMPNN(MPNN):
         bmgs: Iterable[BatchMolGraph],
         V_ds: Iterable[Tensor | None],
         X_d: Tensor | None = None,
+        fppool_batch: FPPoolBatch | None = None,
     ) -> Tensor:
+        """Calculate learned fingerprints for a multicomponent input batch.
+
+        Parameters
+        ----------
+        bmgs : Iterable[BatchMolGraph]
+            The batched graphs for each component.
+        V_ds : Iterable[Tensor | None]
+            Optional atom descriptors for each component.
+        X_d : Tensor | None, default=None
+            Optional molecule descriptors concatenated after per-component aggregation.
+        fppool_batch : FPPoolBatch | None, default=None
+            Reserved for API compatibility with :class:`MPNN`. Multicomponent FPPool support is
+            not implemented in this commit, so the argument is ignored.
+        """
         H_vs: list[Tensor] = self.message_passing(bmgs, V_ds)
-        Hs = [self.agg(H_v, bmg.batch) for H_v, bmg in zip(H_vs, bmgs)]
+        Hs = [self.agg(H_v, bmg.batch, fppool_batch=None) for H_v, bmg in zip(H_vs, bmgs)]
         H = torch.cat(Hs, 1)
         H = self.bn(H)
 
