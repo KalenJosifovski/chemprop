@@ -100,6 +100,14 @@ class MoleculeDatapoint(_DatapointMixin, _MoleculeDatapointMixin):
     """A numpy array of shape ``V x d_vd``, where ``V`` is the number of atoms in the molecule, and
     ``d_vd`` is the number of additional descriptors that will be concatenated to atom-level
     descriptors *after* message passing"""
+    atom_fp: np.ndarray | None = None
+    """A boolean numpy array of shape ``V x d_fp`` encoding atom-to-fingerprint-bit membership for
+    FPPool aggregation"""
+    fp_family_lengths: np.ndarray | None = None
+    """A numpy array containing the bit counts for each fingerprint family used to construct
+    :attr:`atom_fp`"""
+    fp_family_names: list[str] | None = None
+    """The ordered family names aligned to :attr:`fp_family_lengths`"""
 
     def __post_init__(self):
         NAN_TOKEN = 0
@@ -134,6 +142,12 @@ class LazyMoleculeDatapoint(_DatapointMixin, _LazyMoleculeDatapointMixin):
     """A numpy array of shape ``V x d_vd``, where ``V`` is the number of atoms in the molecule, and
     ``d_vd`` is the number of additional descriptors that will be concatenated to atom-level
     descriptors *after* message passing"""
+    atom_fp: np.ndarray | None = None
+    """Reserved for future FPPool support; milestone 1 does not populate this field"""
+    fp_family_lengths: np.ndarray | None = None
+    """Reserved for future FPPool support; milestone 1 does not populate this field"""
+    fp_family_names: list[str] | None = None
+    """Reserved for future FPPool support; milestone 1 does not populate this field"""
 
     def __post_init__(self):
         NAN_TOKEN = 0

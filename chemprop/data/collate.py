@@ -65,12 +65,13 @@ class BatchMolGraph:
         r"""the number of individual :class:`MolGraph`\s in this batch"""
         return self.__size
 
-    def to(self, device: str | torch.device):
+    def to(self, device: str | torch.device) -> "BatchMolGraph":
         self.V = self.V.to(device)
         self.E = self.E.to(device)
         self.edge_index = self.edge_index.to(device)
         self.rev_edge_index = self.rev_edge_index.to(device)
         self.batch = self.batch.to(device)
+        return self
 
 
 class TrainingBatch(NamedTuple):
@@ -81,10 +82,84 @@ class TrainingBatch(NamedTuple):
     w: Tensor
     lt_mask: Tensor | None
     gt_mask: Tensor | None
+    fppool_batch: "FPPoolBatch | None"
+
+
+@dataclass(repr=False, eq=False, slots=True)
+class FPPoolBatch:
+    atom_fp: Tensor
+    fp_family_lengths: Tensor
+    fp_family_names: list[str]
+    molecule_atom_slices: Tensor
+
+    def to(self, device: str | torch.device) -> "FPPoolBatch":
+        self.atom_fp = self.atom_fp.to(device)
+        self.fp_family_lengths = self.fp_family_lengths.to(device)
+        self.molecule_atom_slices = self.molecule_atom_slices.to(device)
+        return self
+
+
+def _collate_fppool_batch(
+    mgs: Sequence[MolGraph],
+    atom_fps: Sequence[np.ndarray | None],
+    fp_family_lengthss: Sequence[np.ndarray | None],
+    fp_family_namess: Sequence[list[str] | None],
+) -> FPPoolBatch | None:
+    has_fppool_metadata = [atom_fp is not None for atom_fp in atom_fps]
+    if any(has_fppool_metadata) and not all(has_fppool_metadata):
+        raise ValueError("FPPool metadata must be present for either all datapoints in a batch or none.")
+
+    if not any(has_fppool_metadata):
+        if any(lengths is not None for lengths in fp_family_lengthss) or any(
+            names is not None for names in fp_family_namess
+        ):
+            raise ValueError(
+                "FPPool family metadata must be absent when atom fingerprint metadata is absent."
+            )
+        return None
+
+    atom_fps_ = [atom_fp for atom_fp in atom_fps if atom_fp is not None]
+    fp_family_lengthss_ = [lengths for lengths in fp_family_lengthss if lengths is not None]
+    fp_family_namess_ = [names for names in fp_family_namess if names is not None]
+
+    if len(atom_fps_) != len(mgs):
+        raise ValueError("FPPool metadata is missing for at least one datapoint in the batch.")
+    if len(fp_family_lengthss_) != len(mgs):
+        raise ValueError("FPPool family lengths must be present for all datapoints in the batch.")
+    if len(fp_family_namess_) != len(mgs):
+        raise ValueError("FPPool family names must be present for all datapoints in the batch.")
+
+    fp_family_lengths_0 = fp_family_lengthss_[0]
+    if any(not np.array_equal(lengths, fp_family_lengths_0) for lengths in fp_family_lengthss_[1:]):
+        raise ValueError("All datapoints in a batch must share identical FPPool family lengths.")
+
+    fp_family_names_0 = fp_family_namess_[0]
+    if any(names != fp_family_names_0 for names in fp_family_namess_[1:]):
+        raise ValueError("All datapoints in a batch must share identical FPPool family names.")
+
+    atom_counts = []
+    for mg, atom_fp in zip(mgs, atom_fps_):
+        if atom_fp.shape[0] != len(mg.V):
+            raise ValueError(
+                "Each FPPool atom membership matrix must have one row per atom in its molecule."
+            )
+        atom_counts.append(atom_fp.shape[0])
+
+    molecule_atom_slices = np.concatenate(([0], np.cumsum(atom_counts)))
+
+    return FPPoolBatch(
+        atom_fp=torch.from_numpy(np.concatenate(atom_fps_, axis=0)).bool(),
+        fp_family_lengths=torch.from_numpy(np.asarray(fp_family_lengths_0)).long(),
+        fp_family_names=list(fp_family_names_0),
+        molecule_atom_slices=torch.from_numpy(molecule_atom_slices).long(),
+    )
 
 
 def collate_batch(batch: Iterable[Datum]) -> TrainingBatch:
-    mgs, V_ds, x_ds, ys, weights, lt_masks, gt_masks = zip(*batch)
+    mgs, V_ds, x_ds, ys, weights, lt_masks, gt_masks, atom_fps, fp_family_lengthss, fp_family_namess = zip(
+        *batch
+    )
+    fppool_batch = _collate_fppool_batch(mgs, atom_fps, fp_family_lengthss, fp_family_namess)
 
     return TrainingBatch(
         BatchMolGraph(mgs),
@@ -94,6 +169,7 @@ def collate_batch(batch: Iterable[Datum]) -> TrainingBatch:
         torch.tensor(weights, dtype=torch.float).unsqueeze(1),
         None if lt_masks[0] is None else torch.from_numpy(np.array(lt_masks)),
         None if gt_masks[0] is None else torch.from_numpy(np.array(gt_masks)),
+        fppool_batch,
     )
 
 
@@ -107,6 +183,7 @@ def collate_cuik_batch(batch: CuikBatchedDatum) -> TrainingBatch:
         torch.tensor(weights, dtype=torch.float).unsqueeze(1),
         None if lt_mask is None else torch.from_numpy(lt_mask),
         None if gt_mask is None else torch.from_numpy(gt_mask),
+        None,
     )
 
 
@@ -125,9 +202,10 @@ class BatchMolAtomBondGraph(BatchMolGraph):
 
         self.bond_batch = torch.tensor(np.concatenate(bond_batch_indexes)).long()
 
-    def to(self, device):
+    def to(self, device: str | torch.device) -> "BatchMolAtomBondGraph":
         super(BatchMolAtomBondGraph, self).to(device)
         self.bond_batch = self.bond_batch.to(device)
+        return self
 
 
 class MolAtomBondTrainingBatch(NamedTuple):

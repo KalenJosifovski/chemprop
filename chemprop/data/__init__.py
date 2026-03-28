@@ -1,6 +1,7 @@
 from .collate import (
     BatchMolAtomBondGraph,
     BatchMolGraph,
+    FPPoolBatch,
     MolAtomBondTrainingBatch,
     MulticomponentTrainingBatch,
     TrainingBatch,
@@ -32,6 +33,7 @@ from .splitting import SplitType, make_split_indices, split_data_by_indices
 __all__ = [
     "BatchMolAtomBondGraph",
     "BatchMolGraph",
+    "FPPoolBatch",
     "TrainingBatch",
     "collate_batch",
     "MolAtomBondTrainingBatch",

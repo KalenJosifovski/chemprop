@@ -40,6 +40,9 @@ class Datum(NamedTuple):
     weight: float
     lt_mask: np.ndarray | None
     gt_mask: np.ndarray | None
+    atom_fp: np.ndarray | None
+    fp_family_lengths: np.ndarray | None
+    fp_family_names: list[str] | None
 
 
 class MolAtomBondDatum(NamedTuple):
@@ -221,7 +224,18 @@ class MoleculeDataset(_MolGraphDatasetMixin, MolGraphDataset):
         d = self.data[idx]
         mg = self.mg_cache[idx]
 
-        return Datum(mg, self.V_ds[idx], self.X_d[idx], self.Y[idx], d.weight, d.lt_mask, d.gt_mask)
+        return Datum(
+            mg,
+            self.V_ds[idx],
+            self.X_d[idx],
+            self.Y[idx],
+            d.weight,
+            d.lt_mask,
+            d.gt_mask,
+            d.atom_fp,
+            d.fp_family_lengths,
+            d.fp_family_names,
+        )
 
     @property
     def cache(self) -> bool:
@@ -405,7 +419,18 @@ class CuikmolmakerDataset(MoleculeDataset):
             bmg.V.numpy(), bmg.E.numpy(), bmg.edge_index.numpy(), bmg.rev_edge_index.numpy()
         )
 
-        return Datum(mg, self.V_ds[idx], self.X_d[idx], self.Y[idx], d.weight, d.lt_mask, d.gt_mask)
+        return Datum(
+            mg,
+            self.V_ds[idx],
+            self.X_d[idx],
+            self.Y[idx],
+            d.weight,
+            d.lt_mask,
+            d.gt_mask,
+            d.atom_fp,
+            d.fp_family_lengths,
+            d.fp_family_names,
+        )
 
     def __getitems__(self, indexes: list[int]) -> CuikBatchedDatum:
         smiles_list = [self.data[idx].smiles for idx in indexes]
@@ -685,7 +710,7 @@ class ReactionDataset(_MolGraphDatasetMixin, MolGraphDataset):
         d = self.data[idx]
         mg = self.mg_cache[idx]
 
-        return Datum(mg, None, self.X_d[idx], self.Y[idx], d.weight, d.lt_mask, d.gt_mask)
+        return Datum(mg, None, self.X_d[idx], self.Y[idx], d.weight, d.lt_mask, d.gt_mask, None, None, None)
 
     @property
     def smiles(self) -> list[tuple]:
