@@ -258,7 +258,13 @@ def test_metric_integeration(loss_fn, metric_fn, train_step, forward, targets, m
     test_loader = DataLoader(dataset, batch_size=20, shuffle=False)
 
     bar_as_text = StringIO()
-    trainer = pl.Trainer(max_epochs=2, log_every_n_steps=1, callbacks=[_TestBar(bar_as_text)])
+    trainer = pl.Trainer(
+        max_epochs=2,
+        log_every_n_steps=1,
+        accelerator="cpu",
+        devices=1,
+        callbacks=[_TestBar(bar_as_text)],
+    )
     trainer.fit(model, train_loader, val_loader)
 
     x = bar_as_text.getvalue()
