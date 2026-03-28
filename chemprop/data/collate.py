@@ -75,6 +75,8 @@ class BatchMolGraph:
 
 
 class TrainingBatch(NamedTuple):
+    """A singular batched training payload for molecule-level models."""
+
     bmg: BatchMolGraph | BatchCuikMolGraph
     V_d: Tensor | None
     X_d: Tensor | None
@@ -83,10 +85,28 @@ class TrainingBatch(NamedTuple):
     lt_mask: Tensor | None
     gt_mask: Tensor | None
     fppool_batch: "FPPoolBatch | None"
+    """Optional FPPool aggregation metadata aligned to the batched atom ordering."""
 
 
 @dataclass(repr=False, eq=False, slots=True)
 class FPPoolBatch:
+    """Structured FPPool metadata aligned to a batched molecule graph.
+
+    Parameters
+    ----------
+    atom_fp : Tensor
+        A boolean tensor of shape ``V x d_fp`` containing atom-to-fingerprint-bit membership for
+        all atoms in the batch.
+    fp_family_lengths : Tensor
+        A tensor containing the bit counts for the ordered fingerprint families used to construct
+        :attr:`atom_fp`.
+    fp_family_names : list[str]
+        The ordered family names aligned to :attr:`fp_family_lengths`.
+    molecule_atom_slices : Tensor
+        Prefix-sum atom offsets with shape ``b + 1`` for recovering per-molecule slices from the
+        concatenated atom dimension.
+    """
+
     atom_fp: Tensor
     fp_family_lengths: Tensor
     fp_family_names: list[str]
@@ -105,6 +125,7 @@ def _collate_fppool_batch(
     fp_family_lengthss: Sequence[np.ndarray | None],
     fp_family_namess: Sequence[list[str] | None],
 ) -> FPPoolBatch | None:
+    """Validate and batch optional per-datapoint FPPool metadata."""
     has_fppool_metadata = [atom_fp is not None for atom_fp in atom_fps]
     if any(has_fppool_metadata) and not all(has_fppool_metadata):
         raise ValueError("FPPool metadata must be present for either all datapoints in a batch or none.")
