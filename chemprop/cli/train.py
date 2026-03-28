@@ -44,6 +44,7 @@ from chemprop.cli.utils import (
 from chemprop.cli.utils.args import uppercase
 from chemprop.conf import LIGHTNING_26_COMPAT_ARGS
 from chemprop.data import (
+    FPPoolConfig,
     MolAtomBondDataset,
     MoleculeDataset,
     MolGraphDataset,
@@ -607,6 +608,35 @@ def validate_train_args(args):
             argument=None, message=f"More than 3 data_files provided. Got: {args.data_path}"
         )
 
+    if args.aggregation == "fppool":
+        if args.reaction_columns is not None:
+            raise ArgumentError(
+                argument=None,
+                message="FPPool aggregation currently supports molecule inputs only.",
+            )
+        if args.smiles_columns is not None and len(args.smiles_columns) != 1:
+            raise ArgumentError(
+                argument=None,
+                message="FPPool aggregation currently supports single-component molecule inputs only.",
+            )
+        if any(
+            cols is not None
+            for cols in [
+                args.mol_target_columns,
+                args.atom_target_columns,
+                args.bond_target_columns,
+            ]
+        ):
+            raise ArgumentError(
+                argument=None,
+                message="FPPool aggregation does not support MolAtomBond training in milestone 1.",
+            )
+        if args.use_cuikmolmaker_featurization:
+            raise ArgumentError(
+                argument=None,
+                message="FPPool aggregation does not support cuikmolmaker featurization in milestone 1.",
+            )
+
     if (
         len(args.data_path) == 2
         and args.split_sizes[2] != 0
@@ -1060,6 +1090,7 @@ def build_splits(args, format_kwargs, featurization_kwargs):
     logger.info(f"Pulling data from file(s): {args.data_path}")
 
     def make_data(data_path):
+        local_featurization_kwargs = dict(featurization_kwargs)
         if any(
             cols is not None
             for cols in [
@@ -1070,7 +1101,9 @@ def build_splits(args, format_kwargs, featurization_kwargs):
         ):
             for key in ["no_header_row", "rxn_cols", "ignore_cols", "splits_col", "target_cols"]:
                 format_kwargs.pop(key, None)
-            featurization_kwargs.pop("use_cuikmolmaker_featurization", None)
+            local_featurization_kwargs.pop("use_cuikmolmaker_featurization", None)
+            local_featurization_kwargs.pop("fppool_config", None)
+            local_featurization_kwargs.pop("fppool_cache_root", None)
             return build_MAB_data_from_files(
                 data_path,
                 p_descriptors=args.descriptors_path,
@@ -1090,7 +1123,7 @@ def build_splits(args, format_kwargs, featurization_kwargs):
                 if args.constraints_to_targets is not None
                 else None,
                 n_workers=args.num_workers,
-                **featurization_kwargs,
+                **local_featurization_kwargs,
             )
         else:
             return build_data_from_files(
@@ -1102,7 +1135,7 @@ def build_splits(args, format_kwargs, featurization_kwargs):
                 p_atom_descs=args.atom_descriptors_path,
                 n_workers=args.num_workers,
                 **format_kwargs,
-                **featurization_kwargs,
+                **local_featurization_kwargs,
             )
 
     if len(args.data_path) == 3:
@@ -2201,6 +2234,11 @@ def main(args):
         ignore_stereo=args.ignore_stereo,
         reorder_atoms=args.reorder_atoms,
         use_cuikmolmaker_featurization=args.use_cuikmolmaker_featurization,
+        fppool_config=(
+            FPPoolConfig()
+            if args.aggregation == "fppool" and args.from_foundation is None
+            else None
+        ),
     )
 
     splits = build_splits(args, format_kwargs, featurization_kwargs)

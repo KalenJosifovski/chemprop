@@ -26,6 +26,17 @@ from .datasets import (
     MulticomponentDataset,
     ReactionDataset,
 )
+from .fppool import (
+    FPPoolConfig,
+    apply_fppool_metadata,
+    build_morgan_atom_fp,
+    derive_fppool_cache_dir,
+    derive_fppool_cache_key,
+    load_fppool_cache,
+    load_or_create_fppool_atom_fps,
+    morgan_bit_environment_atom_indices,
+    save_fppool_cache,
+)
 from .molgraph import MolGraph
 from .samplers import ClassBalanceSampler, SeededSampler
 from .splitting import SplitType, make_split_indices, split_data_by_indices
@@ -54,6 +65,15 @@ __all__ = [
     "MulticomponentDataset",
     "MolGraphDataset",
     "MolGraph",
+    "FPPoolConfig",
+    "build_morgan_atom_fp",
+    "morgan_bit_environment_atom_indices",
+    "derive_fppool_cache_key",
+    "derive_fppool_cache_dir",
+    "load_fppool_cache",
+    "save_fppool_cache",
+    "load_or_create_fppool_atom_fps",
+    "apply_fppool_metadata",
     "ClassBalanceSampler",
     "SeededSampler",
     "SplitType",

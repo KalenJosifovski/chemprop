@@ -18,6 +18,7 @@ from chemprop.data.datasets import (
     MoleculeDataset,
     ReactionDataset,
 )
+from chemprop.data.fppool import FPPoolConfig, apply_fppool_metadata
 from chemprop.featurizers.atom import get_multi_hot_atom_featurizer
 from chemprop.featurizers.bond import MultiHotBondFeaturizer, RIGRBondFeaturizer
 from chemprop.featurizers.molecule import MoleculeFeaturizerRegistry
@@ -142,6 +143,9 @@ def make_datapoints(
     ignore_stereo: bool,
     reorder_atoms: bool,
     use_cuikmolmaker_featurization: bool,
+    fppool_config: FPPoolConfig | None = None,
+    fppool_source_path: PathLike | None = None,
+    fppool_cache_root: PathLike | None = None,
     n_workers: int = 0,
 ) -> tuple[
     list[list[MoleculeDatapoint]] | list[list[LazyMoleculeDatapoint]], list[list[ReactionDatapoint]]
@@ -202,7 +206,16 @@ def make_datapoints(
         whether to add hydrogen atoms
     ignore_stereo : bool
         whether to ignore stereo information
-    n_workers : bool
+    fppool_config : FPPoolConfig | None, default=None
+        optional configuration for FPPool atom-membership generation. When provided, FPPool
+        metadata will be attached only for supported eager single-component molecule datapoints.
+    fppool_source_path : PathLike | None, default=None
+        the source dataset path used to derive the FPPool cache identity. Required when
+        ``fppool_config`` is provided.
+    fppool_cache_root : PathLike | None, default=None
+        an optional override for the FPPool cache root directory. If ``None``, the default
+        FPPool cache location is used.
+    n_workers : int
         number of workers to use to prepare molecules
 
     Returns
@@ -219,6 +232,7 @@ def make_datapoints(
     ValueError
         if both ``smiss`` and ``rxnss`` are ``None``.
         if ``smiss`` and ``rxnss`` are both given and have different lengths.
+        if FPPool metadata generation is requested for unsupported datapoint types.
     """
     if smiss is None and rxnss is None:
         raise ValueError("args 'smiss' and 'rnxss' were both `None`!")
@@ -245,6 +259,8 @@ def make_datapoints(
     V_dss = [[None] * N] * n_mols if V_dss is None else V_dss
 
     if use_cuikmolmaker_featurization:
+        if fppool_config is not None:
+            raise ValueError("FPPool data preparation does not support cuikmolmaker featurization.")
         mol_data = [
             LazyMoleculeDatapoint(
                 smiles=smiss[0][i],  # cuikmolmaker only supports single molecule datapoints
@@ -402,6 +418,21 @@ def make_datapoints(
         for mol_idx, smis in enumerate(smiss)
     ]
 
+    if fppool_config is not None:
+        if fppool_source_path is None:
+            raise ValueError("FPPool data preparation requires a source dataset path.")
+        if len(mol_data) != 1:
+            raise ValueError("FPPool data preparation currently supports single-component molecules only.")
+        if rxnss:
+            raise ValueError("FPPool data preparation does not support reaction datapoints.")
+
+        apply_fppool_metadata(
+            mol_data[0],
+            fppool_source_path,
+            fppool_config,
+            cache_root=fppool_cache_root,
+        )
+
     rxn_data = [
         [
             ReactionDatapoint(
@@ -479,6 +510,7 @@ def build_data_from_files(
         E_fss,
         V_dss,
         n_workers=n_workers,
+        fppool_source_path=p_data,
         **featurization_kwargs,
     )
 

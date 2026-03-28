@@ -12,6 +12,7 @@ __all__ = [
     "MeanAggregation",
     "SumAggregation",
     "NormAggregation",
+    "FPPoolAggregation",
     "AttentiveAggregation",
 ]
 
@@ -111,6 +112,18 @@ class NormAggregation(SumAggregation):
 
     def forward(self, H: Tensor, batch: Tensor) -> Tensor:
         return super().forward(H, batch) / self.norm
+
+
+@AggregationRegistry.register("fppool")
+class FPPoolAggregation(Aggregation):
+    """Placeholder registration for FPPool.
+
+    Commit 2 wires FPPool-specific data preparation behind ``aggregation=fppool``.
+    The hierarchical aggregation itself lands in a later commit.
+    """
+
+    def forward(self, H: Tensor, batch: Tensor) -> Tensor:
+        raise NotImplementedError("FPPool aggregation forward is not implemented yet.")
 
 
 class AttentiveAggregation(Aggregation):
