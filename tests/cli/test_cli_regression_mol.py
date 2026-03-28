@@ -4,6 +4,7 @@
 import json
 import sys
 
+from configargparse import ArgumentError
 import pytest
 import torch
 
@@ -80,6 +81,56 @@ def test_train_quick(monkeypatch, data_path):
     with monkeypatch.context() as m:
         m.setattr("sys.argv", args)
         main()
+
+
+def test_train_quick_fppool(monkeypatch, data_path, tmp_path):
+    input_path, *_ = data_path
+
+    args = [
+        "chemprop",
+        "train",
+        "-i",
+        input_path,
+        "--epochs",
+        "3",
+        "--num-workers",
+        "0",
+        "--show-individual-scores",
+        "--aggregation",
+        "fppool",
+        "--accelerator",
+        "cpu",
+        "--devices",
+        "1",
+        "--output-dir",
+        str(tmp_path),
+    ]
+
+    with monkeypatch.context() as m:
+        m.setattr("sys.argv", args)
+        main()
+
+
+def test_train_fppool_rejects_multicomponent_inputs(monkeypatch, data_dir):
+    input_path = str(data_dir / "regression" / "mol+mol" / "mol+mol.csv")
+    args = [
+        "chemprop",
+        "train",
+        "-i",
+        input_path,
+        "--smiles-columns",
+        "smiles",
+        "solvent",
+        "--target-columns",
+        "peakwavs_max",
+        "--aggregation",
+        "fppool",
+    ]
+
+    with monkeypatch.context() as m:
+        m.setattr("sys.argv", args)
+        with pytest.raises(ArgumentError, match="single-component molecule inputs only"):
+            main()
 
 
 def test_train_quick_from_foundation(monkeypatch, data_path):

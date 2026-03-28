@@ -34,6 +34,48 @@ The following modeling tasks are supported:
 A full list of available command-line arguments can be found in :ref:`cmd`.
 
 
+Aggregation
+-----------
+
+For single-component molecule models, the graph representation can be controlled with
+:code:`--aggregation`.
+
+Common options are:
+
+* :code:`mean`
+* :code:`sum`
+* :code:`norm`
+* :code:`fppool`
+
+:code:`fppool` enables hierarchical fingerprint-guided pooling for the currently supported
+milestone-1 path:
+
+* molecule-only inputs
+* single-component inputs
+* Morgan-only fingerprint memberships
+
+Current exclusions for :code:`fppool` are:
+
+* no synthetic :code:`atoms_repr` family yet
+* no RDKit or PubChem fingerprint families yet
+* no reaction inputs
+* no multicomponent molecule inputs
+* no MolAtomBond training
+
+For example:
+
+.. code-block::
+
+    chemprop train --data-path tests/data/regression/mol/mol.csv \
+        --task-type regression \
+        --aggregation fppool \
+        --output-dir fppool_checkpoints
+
+The first time this path is used on a given dataset/configuration pair, Chemprop will generate the
+Morgan atom-membership cache automatically. Later runs with the same dataset path and FPPool
+configuration will reuse that cache.
+
+
 Input Data
 ----------
 

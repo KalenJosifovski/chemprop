@@ -32,3 +32,4 @@ Chemprop's usage within Python scripts is also illustrated by the Jupyter notebo
     convert_v1_to_v2
     mol_atom_bond
     constrained_mol_atom_bond
+    fppool_benchmark
