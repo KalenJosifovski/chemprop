@@ -611,8 +611,7 @@ def validate_train_args(args):
     if args.aggregation == "fppool":
         if args.reaction_columns is not None:
             raise ArgumentError(
-                argument=None,
-                message="FPPool aggregation currently supports molecule inputs only.",
+                argument=None, message="FPPool aggregation currently supports molecule inputs only."
             )
         if args.smiles_columns is not None and len(args.smiles_columns) != 1:
             raise ArgumentError(

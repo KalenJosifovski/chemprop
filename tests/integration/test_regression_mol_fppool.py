@@ -10,12 +10,7 @@ from torch.utils.data import DataLoader
 
 from chemprop import models, nn
 from chemprop.cli.utils import build_data_from_files
-from chemprop.data import (
-    FPPoolConfig,
-    MoleculeDataset,
-    collate_batch,
-    derive_fppool_cache_dir,
-)
+from chemprop.data import FPPoolConfig, MoleculeDataset, collate_batch, derive_fppool_cache_dir
 
 
 @pytest.fixture
@@ -60,10 +55,7 @@ def fppool_dataloader(fppool_data_path: Path, tmp_path: Path) -> DataLoader:
 @pytest.mark.integration
 def test_fppool_quick(fppool_dataloader: DataLoader):
     mpnn = models.MPNN(
-        nn.BondMessagePassing(),
-        nn.FPPoolAggregation(),
-        nn.RegressionFFN(),
-        batch_norm=True,
+        nn.BondMessagePassing(), nn.FPPoolAggregation(), nn.RegressionFFN(), batch_norm=True
     )
     trainer = pl.Trainer(
         logger=False,
@@ -80,10 +72,7 @@ def test_fppool_quick(fppool_dataloader: DataLoader):
 @pytest.mark.integration
 def test_fppool_overfit(fppool_dataloader: DataLoader):
     mpnn = models.MPNN(
-        nn.BondMessagePassing(),
-        nn.FPPoolAggregation(),
-        nn.RegressionFFN(),
-        batch_norm=True,
+        nn.BondMessagePassing(), nn.FPPoolAggregation(), nn.RegressionFFN(), batch_norm=True
     )
     trainer = pl.Trainer(
         logger=False,
@@ -110,14 +99,11 @@ def test_fppool_overfit(fppool_dataloader: DataLoader):
 
 
 @pytest.mark.integration
-def test_fppool_cached_data_prep_path_uses_cache(
-    fppool_data_path: Path,
-    tmp_path: Path,
-):
+def test_fppool_cached_data_prep_path_uses_cache(fppool_data_path: Path, tmp_path: Path):
     config = FPPoolConfig(morgan_nbits=64, morgan_radius=2)
     cache_root = tmp_path / ".cache"
 
-    first_data, = build_data_from_files(
+    (first_data,) = build_data_from_files(
         fppool_data_path,
         no_header_row=False,
         smiles_cols=["smiles"],
@@ -153,7 +139,7 @@ def test_fppool_cached_data_prep_path_uses_cache(
         "chemprop.data.fppool.build_morgan_atom_fp",
         side_effect=AssertionError("Expected the second pass to consume the cache."),
     ):
-        second_data, = build_data_from_files(
+        (second_data,) = build_data_from_files(
             fppool_data_path,
             no_header_row=False,
             smiles_cols=["smiles"],

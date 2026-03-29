@@ -422,15 +422,14 @@ def make_datapoints(
         if fppool_source_path is None:
             raise ValueError("FPPool data preparation requires a source dataset path.")
         if len(mol_data) != 1:
-            raise ValueError("FPPool data preparation currently supports single-component molecules only.")
+            raise ValueError(
+                "FPPool data preparation currently supports single-component molecules only."
+            )
         if rxnss:
             raise ValueError("FPPool data preparation does not support reaction datapoints.")
 
         apply_fppool_metadata(
-            mol_data[0],
-            fppool_source_path,
-            fppool_config,
-            cache_root=fppool_cache_root,
+            mol_data[0], fppool_source_path, fppool_config, cache_root=fppool_cache_root
         )
 
     rxn_data = [

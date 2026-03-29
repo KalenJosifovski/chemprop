@@ -128,7 +128,9 @@ def _collate_fppool_batch(
     """Validate and batch optional per-datapoint FPPool metadata."""
     has_fppool_metadata = [atom_fp is not None for atom_fp in atom_fps]
     if any(has_fppool_metadata) and not all(has_fppool_metadata):
-        raise ValueError("FPPool metadata must be present for either all datapoints in a batch or none.")
+        raise ValueError(
+            "FPPool metadata must be present for either all datapoints in a batch or none."
+        )
 
     if not any(has_fppool_metadata):
         if any(lengths is not None for lengths in fp_family_lengthss) or any(
@@ -177,9 +179,18 @@ def _collate_fppool_batch(
 
 
 def collate_batch(batch: Iterable[Datum]) -> TrainingBatch:
-    mgs, V_ds, x_ds, ys, weights, lt_masks, gt_masks, atom_fps, fp_family_lengthss, fp_family_namess = zip(
-        *batch
-    )
+    (
+        mgs,
+        V_ds,
+        x_ds,
+        ys,
+        weights,
+        lt_masks,
+        gt_masks,
+        atom_fps,
+        fp_family_lengthss,
+        fp_family_namess,
+    ) = zip(*batch)
     fppool_batch = _collate_fppool_batch(mgs, atom_fps, fp_family_lengthss, fp_family_namess)
 
     return TrainingBatch(

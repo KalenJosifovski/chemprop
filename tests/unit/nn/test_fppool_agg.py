@@ -49,14 +49,7 @@ def test_fppool_aggregation_returns_expected_shape_and_attention_state():
     )
     batch = torch.tensor([0, 0, 0, 1, 1], dtype=torch.long)
     atom_fp = torch.tensor(
-        [
-            [1, 0, 1, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, 0],
-            [1, 0, 0, 1],
-            [0, 1, 0, 0],
-        ],
-        dtype=torch.bool,
+        [[1, 0, 1, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 1], [0, 1, 0, 0]], dtype=torch.bool
     )
     fppool_batch = make_fppool_batch(atom_fp)
 
@@ -76,14 +69,7 @@ def test_fppool_family_slicing_and_zero_membership_groups_are_safe():
     H = torch.randn(5, 4)
     batch = torch.tensor([0, 0, 0, 1, 1], dtype=torch.long)
     atom_fp = torch.tensor(
-        [
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 0, 0],
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-        ],
-        dtype=torch.bool,
+        [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 0, 0], [1, 0, 0, 0], [0, 1, 0, 0]], dtype=torch.bool
     )
     fppool_batch = make_fppool_batch(atom_fp)
 
@@ -103,14 +89,7 @@ def test_fppool_aggregation_consumes_atoms_repr_as_leading_family():
     H = torch.randn(5, 4)
     batch = torch.tensor([0, 0, 0, 1, 1], dtype=torch.long)
     atom_fp = torch.tensor(
-        [
-            [1, 1, 0, 1],
-            [1, 0, 1, 0],
-            [1, 0, 0, 1],
-            [1, 1, 0, 0],
-            [1, 0, 1, 0],
-        ],
-        dtype=torch.bool,
+        [[1, 1, 0, 1], [1, 0, 1, 0], [1, 0, 0, 1], [1, 1, 0, 0], [1, 0, 1, 0]], dtype=torch.bool
     )
     fppool_batch = make_atoms_repr_fppool_batch(atom_fp)
 
@@ -152,14 +131,7 @@ def test_mpnn_fingerprint_passes_fppool_batch_to_aggregation():
     )
     batch = torch.tensor([0, 0, 0, 1, 1], dtype=torch.long)
     atom_fp = torch.tensor(
-        [
-            [1, 0, 1, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, 0],
-            [1, 0, 0, 1],
-            [0, 1, 0, 0],
-        ],
-        dtype=torch.bool,
+        [[1, 0, 1, 0], [0, 1, 0, 0], [0, 0, 1, 0], [1, 0, 0, 1], [0, 1, 0, 0]], dtype=torch.bool
     )
     fppool_batch = make_fppool_batch(atom_fp)
     bmg = DummyBatchMolGraph(V=H, batch=batch)

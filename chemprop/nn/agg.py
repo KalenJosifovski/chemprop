@@ -139,9 +139,12 @@ def _masked_attention_pool(values: Tensor, logits: Tensor, mask: Tensor) -> tupl
     """
     weights = torch.zeros_like(logits)
     if not mask.any():
-        return torch.zeros(
-            values.shape[0], values.shape[-1], dtype=values.dtype, device=values.device
-        ), weights
+        return (
+            torch.zeros(
+                values.shape[0], values.shape[-1], dtype=values.dtype, device=values.device
+            ),
+            weights,
+        )
 
     valid_rows = mask.any(dim=1)
     if valid_rows.any():
@@ -192,7 +195,9 @@ class FPPoolAggregation(Aggregation):
     ) -> tuple[Tensor, Tensor, Tensor, Tensor, Tensor]:
         """Aggregate atom embeddings into fingerprint-bit embeddings."""
         num_bits = atom_fp.shape[1]
-        bit_embeddings = torch.zeros(num_graphs, num_bits, H.shape[1], dtype=H.dtype, device=H.device)
+        bit_embeddings = torch.zeros(
+            num_graphs, num_bits, H.shape[1], dtype=H.dtype, device=H.device
+        )
         bit_mask = torch.zeros(num_graphs, num_bits, dtype=torch.bool, device=H.device)
 
         active_atom_indices, active_bit_indices = atom_fp.nonzero(as_tuple=True)
@@ -222,7 +227,9 @@ class FPPoolAggregation(Aggregation):
         flat_embeddings = torch.zeros(
             num_graphs * num_bits, H.shape[1], dtype=H.dtype, device=H.device
         )
-        flat_embeddings.scatter_add_(0, group_index, active_weights.unsqueeze(1) * H[active_atom_indices])
+        flat_embeddings.scatter_add_(
+            0, group_index, active_weights.unsqueeze(1) * H[active_atom_indices]
+        )
         bit_embeddings = flat_embeddings.view(num_graphs, num_bits, H.shape[1])
         bit_mask.view(-1)[group_ids] = True
 
@@ -243,9 +250,13 @@ class FPPoolAggregation(Aggregation):
             return torch.zeros(0, H.shape[1], dtype=H.dtype, device=H.device)
 
         atom_fp = fppool_batch.atom_fp
-        bit_embeddings, bit_mask, active_atom_indices, active_bit_indices, active_weights = self._inner_pool(
-            H, batch, atom_fp, num_graphs
-        )
+        (
+            bit_embeddings,
+            bit_mask,
+            active_atom_indices,
+            active_bit_indices,
+            active_weights,
+        ) = self._inner_pool(H, batch, atom_fp, num_graphs)
 
         family_embeddings = []
         family_masks = []
