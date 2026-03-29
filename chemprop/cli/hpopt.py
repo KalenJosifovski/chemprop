@@ -30,6 +30,7 @@ from chemprop.nn.transforms import UnscaleTransform
 from chemprop.nn.utils import Activation
 
 NO_RAY = False
+HP_OPT_AGGREGATION_CHOICES = [name for name in AggregationRegistry.keys() if name != "fppool"]
 DEFAULT_SEARCH_SPACE = {
     "activation": None,
     "dropout": None,
@@ -72,7 +73,7 @@ try:
         "dropout": tune.choice([0.0] * 8 + list(np.arange(0.05, 0.45, 0.05))),
         "message_hidden_dim": tune.qrandint(lower=300, upper=2400, q=100),
         "depth": tune.randint(lower=2, upper=6 + 1),  # `+ 1` because upper bound is exclusive
-        "aggregation": tune.choice(categories=list(AggregationRegistry.keys())),
+        "aggregation": tune.choice(categories=HP_OPT_AGGREGATION_CHOICES),
         "aggregation_norm": tune.randint(lower=1, upper=200 + 1),
         "ffn_hidden_dim": tune.qrandint(lower=300, upper=2400, q=100),
         "ffn_num_layers": tune.randint(lower=1, upper=2 + 1),

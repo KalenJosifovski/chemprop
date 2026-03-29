@@ -84,3 +84,29 @@ def test_draw_and_plot_helpers_return_renderable_objects():
     assert all(isinstance(rendered, Image.Image) for rendered in gallery)
     assert isinstance(inter_fig, Figure)
     assert isinstance(global_fig, Figure)
+
+
+def test_extract_fppool_explanation_supports_multifamily_batches():
+    mols = [
+        make_mol("c1ccccc1O", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+    ]
+    config = FPPoolConfig(
+        family_names=("morgan", "rdkit", "pubchem"),
+        morgan_nbits=32,
+        rdkit_nbits=64,
+        atoms_repr=True,
+    )
+    fppool_batch = _make_real_fppool_batch(mols, config)
+    H = torch.randn(fppool_batch.atom_fp.shape[0], 8)
+    batch = torch.zeros(fppool_batch.atom_fp.shape[0], dtype=torch.long)
+
+    aggregation = FPPoolAggregation()
+    aggregation(H, batch, fppool_batch=fppool_batch)
+    explanation = extract_fppool_explanation(aggregation, mols, fppool_batch, config, top_k_bits=2)[
+        0
+    ]
+
+    assert explanation.global_explanation.family_names == ("atoms", "morgan", "rdkit", "pubchem")
+    assert len(explanation.inter_explanations) == 4
+    assert any(inter.family_name == "rdkit" for inter in explanation.inter_explanations)
+    assert any(inter.family_name == "pubchem" for inter in explanation.inter_explanations)

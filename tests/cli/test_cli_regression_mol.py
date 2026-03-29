@@ -111,6 +111,42 @@ def test_train_quick_fppool(monkeypatch, data_path, tmp_path):
         main()
 
 
+def test_train_quick_fppool_multifamily(monkeypatch, data_path, tmp_path):
+    input_path, *_ = data_path
+
+    args = [
+        "chemprop",
+        "train",
+        "-i",
+        input_path,
+        "--epochs",
+        "1",
+        "--warmup-epochs",
+        "0",
+        "--num-workers",
+        "0",
+        "--show-individual-scores",
+        "--aggregation",
+        "fppool",
+        "--fppool-families",
+        "morgan",
+        "rdkit",
+        "pubchem",
+        "--fppool-rdkit-nbits",
+        "64",
+        "--accelerator",
+        "cpu",
+        "--devices",
+        "1",
+        "--output-dir",
+        str(tmp_path),
+    ]
+
+    with monkeypatch.context() as m:
+        m.setattr("sys.argv", args)
+        main()
+
+
 def test_train_fppool_rejects_multicomponent_inputs(monkeypatch, data_dir):
     input_path = str(data_dir / "regression" / "mol+mol" / "mol+mol.csv")
     args = [

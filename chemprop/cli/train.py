@@ -246,6 +246,31 @@ def add_train_args(parser: ArgumentParser) -> ArgumentParser:
         help="Normalization factor by which to divide summed up atomic features for ``norm`` aggregation",
     )
     mp_args.add_argument(
+        "--fppool-families",
+        nargs="+",
+        default=["morgan"],
+        choices=["morgan", "rdkit", "pubchem"],
+        help="Ordered non-synthetic fingerprint families to concatenate when using ``--aggregation fppool``.",
+    )
+    mp_args.add_argument(
+        "--fppool-rdkit-nbits",
+        type=int,
+        default=1024,
+        help="Bit count for the RDKit path fingerprint family when using FPPool.",
+    )
+    mp_args.add_argument(
+        "--fppool-rdkit-min-path",
+        type=int,
+        default=1,
+        help="Minimum path length for the RDKit path fingerprint family when using FPPool.",
+    )
+    mp_args.add_argument(
+        "--fppool-rdkit-max-path",
+        type=int,
+        default=5,
+        help="Maximum path length for the RDKit path fingerprint family when using FPPool.",
+    )
+    mp_args.add_argument(
         "--atom-messages", action="store_true", help="Pass messages on atoms rather than bonds."
     )
 
@@ -609,6 +634,10 @@ def validate_train_args(args):
         )
 
     if args.aggregation == "fppool":
+        if len(set(args.fppool_families)) != len(args.fppool_families):
+            raise ArgumentError(
+                argument=None, message="FPPool family selection must not contain duplicates."
+            )
         if args.reaction_columns is not None:
             raise ArgumentError(
                 argument=None, message="FPPool aggregation currently supports molecule inputs only."
@@ -2236,7 +2265,12 @@ def main(args):
         reorder_atoms=args.reorder_atoms,
         use_cuikmolmaker_featurization=args.use_cuikmolmaker_featurization,
         fppool_config=(
-            FPPoolConfig()
+            FPPoolConfig(
+                family_names=tuple(args.fppool_families),
+                rdkit_nbits=args.fppool_rdkit_nbits,
+                rdkit_min_path=args.fppool_rdkit_min_path,
+                rdkit_max_path=args.fppool_rdkit_max_path,
+            )
             if args.aggregation == "fppool" and args.from_foundation is None
             else None
         ),

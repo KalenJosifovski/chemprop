@@ -1,4 +1,4 @@
-"""Integration coverage for molecule-only Morgan FPPool training."""
+"""Integration coverage for molecule-only FPPool training."""
 
 from pathlib import Path
 from unittest.mock import patch
@@ -170,3 +170,56 @@ def test_fppool_cached_data_prep_path_uses_cache(fppool_data_path: Path, tmp_pat
         assert second_dp.atom_fp is not None
         assert first_dp.atom_fp.shape == second_dp.atom_fp.shape
         assert (first_dp.atom_fp == second_dp.atom_fp).all()
+
+
+@pytest.mark.integration
+def test_fppool_multifamily_quick(fppool_data_path: Path, tmp_path: Path):
+    config = FPPoolConfig(
+        family_names=("morgan", "rdkit", "pubchem"),
+        morgan_nbits=64,
+        rdkit_nbits=64,
+        atoms_repr=True,
+    )
+    (molecule_data,) = build_data_from_files(
+        fppool_data_path,
+        no_header_row=False,
+        smiles_cols=["smiles"],
+        rxn_cols=None,
+        target_cols=["lipo"],
+        ignore_cols=None,
+        splits_col=None,
+        weight_col=None,
+        bounded=False,
+        p_descriptors=None,
+        p_atom_feats=None,
+        p_bond_feats=None,
+        p_atom_descs=None,
+        descriptor_cols=None,
+        molecule_featurizers=None,
+        keep_h=False,
+        add_h=False,
+        ignore_stereo=False,
+        reorder_atoms=True,
+        use_cuikmolmaker_featurization=False,
+        fppool_config=config,
+        fppool_cache_root=tmp_path / ".cache",
+        n_workers=0,
+    )
+
+    dset = MoleculeDataset(molecule_data)
+    dset.normalize_targets()
+    dataloader = DataLoader(dset, batch_size=16, collate_fn=collate_batch)
+
+    mpnn = models.MPNN(
+        nn.BondMessagePassing(), nn.FPPoolAggregation(), nn.RegressionFFN(), batch_norm=True
+    )
+    trainer = pl.Trainer(
+        logger=False,
+        enable_checkpointing=False,
+        enable_progress_bar=False,
+        enable_model_summary=False,
+        accelerator="cpu",
+        devices=1,
+        fast_dev_run=True,
+    )
+    trainer.fit(mpnn, dataloader, None)

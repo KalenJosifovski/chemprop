@@ -6,11 +6,16 @@ from chemprop.data import (
     FPPoolBitMembership,
     FPPoolConfig,
     FPPoolMoleculeProvenance,
+    PUBCHEM_NBITS,
     build_atoms_repr_atom_fp,
     build_fppool_atom_fp,
     build_fppool_molecule_provenance,
     build_morgan_atom_fp,
     build_morgan_bit_memberships,
+    build_pubchem_atom_fp,
+    build_pubchem_bit_memberships,
+    build_rdkit_atom_fp,
+    build_rdkit_bit_memberships,
     derive_fppool_cache_dir,
     derive_fppool_cache_key,
     load_or_create_fppool_atom_fps,
@@ -75,6 +80,48 @@ def test_build_morgan_bit_memberships_include_bond_indices():
     assert any(len(membership.bond_indices) > 0 for membership in memberships)
 
 
+def test_build_rdkit_atom_fp_shape_and_active_bits():
+    mol = make_mol("c1ccccc1O", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+
+    atom_fp = build_rdkit_atom_fp(mol, nbits=64, min_path=1, max_path=5)
+
+    assert atom_fp.dtype == bool
+    assert atom_fp.shape == (mol.GetNumAtoms(), 64)
+    assert atom_fp.any()
+
+
+def test_build_rdkit_bit_memberships_include_bond_indices():
+    mol = make_mol("c1ccccc1O", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+
+    memberships = build_rdkit_bit_memberships(mol, nbits=64, min_path=1, max_path=5)
+
+    assert memberships
+    assert all(isinstance(membership, FPPoolBitMembership) for membership in memberships)
+    assert all(membership.family_name == "rdkit" for membership in memberships)
+    assert any(len(membership.bond_indices) > 0 for membership in memberships)
+
+
+def test_build_pubchem_atom_fp_shape_and_active_bits():
+    mol = make_mol("c1ccccc1O", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+
+    atom_fp = build_pubchem_atom_fp(mol)
+
+    assert atom_fp.dtype == bool
+    assert atom_fp.shape == (mol.GetNumAtoms(), PUBCHEM_NBITS)
+    assert atom_fp.any()
+
+
+def test_build_pubchem_bit_memberships_include_bond_indices():
+    mol = make_mol("c1ccccc1O", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+
+    memberships = build_pubchem_bit_memberships(mol)
+
+    assert memberships
+    assert all(isinstance(membership, FPPoolBitMembership) for membership in memberships)
+    assert all(membership.family_name == "pubchem" for membership in memberships)
+    assert any(len(membership.bond_indices) > 0 for membership in memberships)
+
+
 def test_build_fppool_molecule_provenance_includes_atoms_repr_and_family_metadata():
     mol = make_mol("CCO", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
     config = FPPoolConfig(morgan_nbits=32, morgan_radius=2, atoms_repr=True)
@@ -90,6 +137,47 @@ def test_build_fppool_molecule_provenance_includes_atoms_repr_and_family_metadat
     assert atoms_membership.family_name == "atoms"
     assert atoms_membership.atom_indices == tuple(range(mol.GetNumAtoms()))
     assert atoms_membership.bond_indices == tuple()
+
+
+def test_build_fppool_atom_fp_concatenates_rdkit_and_pubchem_families():
+    mol = make_mol("c1ccccc1O", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+    config = FPPoolConfig(
+        family_names=("morgan", "rdkit", "pubchem"),
+        morgan_nbits=32,
+        rdkit_nbits=64,
+        atoms_repr=True,
+    )
+
+    atom_fp = build_fppool_atom_fp(mol, config)
+
+    assert atom_fp.dtype == bool
+    assert atom_fp.shape == (mol.GetNumAtoms(), 1 + 32 + 64 + PUBCHEM_NBITS)
+    assert np.all(atom_fp[:, 0])
+    assert atom_fp[:, 1 : 1 + 32].any()
+    assert atom_fp[:, 33 : 33 + 64].any()
+    assert atom_fp[:, 97:].any()
+
+
+def test_build_fppool_molecule_provenance_offsets_multi_family_bits_correctly():
+    mol = make_mol("c1ccccc1O", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+    config = FPPoolConfig(
+        family_names=("morgan", "rdkit", "pubchem"),
+        morgan_nbits=32,
+        rdkit_nbits=64,
+        atoms_repr=True,
+    )
+
+    provenance = build_fppool_molecule_provenance(mol, config)
+
+    assert provenance.family_names == ("atoms", "morgan", "rdkit", "pubchem")
+    assert provenance.family_lengths == (1, 32, 64, PUBCHEM_NBITS)
+    assert any(membership.family_name == "rdkit" for membership in provenance.bit_memberships)
+    assert any(membership.family_name == "pubchem" for membership in provenance.bit_memberships)
+    assert all(
+        membership.global_bit_index >= 33
+        for membership in provenance.bit_memberships
+        if membership.family_name in {"rdkit", "pubchem"}
+    )
 
 
 def test_load_or_create_fppool_atom_fps_round_trips_cache(tmp_path):
@@ -134,10 +222,21 @@ def test_fppool_cache_key_changes_with_path_and_config(tmp_path):
     key_4 = derive_fppool_cache_key(
         path_1, FPPoolConfig(morgan_nbits=32, morgan_radius=2, atoms_repr=False)
     )
+    key_5 = derive_fppool_cache_key(
+        path_1, FPPoolConfig(family_names=("morgan", "rdkit"), morgan_nbits=32, rdkit_nbits=64)
+    )
+    key_6 = derive_fppool_cache_key(
+        path_1,
+        FPPoolConfig(
+            family_names=("morgan", "rdkit"), morgan_nbits=32, rdkit_nbits=64, rdkit_max_path=7
+        ),
+    )
 
     assert key_1 != key_2
     assert key_1 != key_3
     assert key_1 != key_4
+    assert key_1 != key_5
+    assert key_5 != key_6
 
 
 def test_build_data_from_files_attaches_fppool_metadata_with_reordered_atoms(tmp_path):
@@ -219,5 +318,48 @@ def test_build_data_from_files_preserves_morgan_only_behavior_when_atoms_repr_di
     )
 
     assert np.array_equal(datapoint.atom_fp, expected_atom_fp)
-    assert np.array_equal(datapoint.fp_family_lengths, np.array([32]))
-    assert datapoint.fp_family_names == ["morgan"]
+
+
+def test_build_data_from_files_attaches_multifamily_fppool_metadata(tmp_path):
+    data_path = tmp_path / "data.csv"
+    DataFrame({"smiles": ["c1ccccc1O"], "y": [1.0]}).to_csv(data_path, index=False)
+    config = FPPoolConfig(
+        family_names=("morgan", "rdkit", "pubchem"),
+        morgan_nbits=32,
+        rdkit_nbits=64,
+        atoms_repr=True,
+    )
+
+    data = build_data_from_files(
+        data_path,
+        no_header_row=False,
+        smiles_cols=["smiles"],
+        rxn_cols=None,
+        target_cols=["y"],
+        ignore_cols=None,
+        splits_col=None,
+        weight_col=None,
+        bounded=False,
+        p_descriptors=None,
+        p_atom_feats=None,
+        p_bond_feats=None,
+        p_atom_descs=None,
+        descriptor_cols=None,
+        molecule_featurizers=None,
+        keep_h=False,
+        add_h=False,
+        ignore_stereo=False,
+        reorder_atoms=True,
+        use_cuikmolmaker_featurization=False,
+        fppool_config=config,
+        fppool_cache_root=tmp_path / ".cache",
+        n_workers=0,
+    )
+
+    datapoint = data[0][0]
+    assert datapoint.atom_fp is not None
+    assert datapoint.atom_fp.shape == (datapoint.mol.GetNumAtoms(), 1 + 32 + 64 + PUBCHEM_NBITS)
+    assert np.array_equal(
+        datapoint.fp_family_lengths, np.array([1, 32, 64, PUBCHEM_NBITS], dtype=int)
+    )
+    assert datapoint.fp_family_names == ["atoms", "morgan", "rdkit", "pubchem"]

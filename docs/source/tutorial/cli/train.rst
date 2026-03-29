@@ -48,15 +48,18 @@ Common options are:
 * :code:`fppool`
 
 :code:`fppool` enables hierarchical fingerprint-guided pooling for the currently supported
-milestone-1 path:
+single-component molecule path:
 
 * molecule-only inputs
 * single-component inputs
-* Morgan fingerprint memberships with the synthetic atomic special family
+* synthetic atomic special family plus any ordered combination of:
+  
+  * :code:`morgan`
+  * :code:`rdkit`
+  * :code:`pubchem`
 
 Current exclusions for :code:`fppool` are:
 
-* no RDKit or PubChem fingerprint families yet
 * no reaction inputs
 * no multicomponent molecule inputs
 * no MolAtomBond training
@@ -68,11 +71,13 @@ For example:
     chemprop train --data-path tests/data/regression/mol/mol.csv \
         --task-type regression \
         --aggregation fppool \
+        --fppool-families morgan rdkit pubchem \
         --output-dir fppool_checkpoints
 
 The first time this path is used on a given dataset/configuration pair, Chemprop will generate the
-Morgan atom-membership cache automatically. Later runs with the same dataset path and FPPool
-configuration will reuse that cache.
+fingerprint-membership cache automatically. Later runs with the same dataset path and FPPool
+configuration will reuse that cache. The active family combination and RDKit path settings are
+part of the cache identity.
 
 
 Input Data
