@@ -13,8 +13,11 @@ from typing import Iterable
 import numpy as np
 import pandas as pd
 from rdkit import Chem
-from rdkit.Chem import rdMolDescriptors
-from rdkit.Chem.rdmolops import RDKFingerprint
+from rdkit.Chem.rdFingerprintGenerator import (
+    AdditionalOutput,
+    GetMorganGenerator,
+    GetRDKitFPGenerator,
+)
 
 from chemprop.data.datapoints import MoleculeDatapoint
 
@@ -645,10 +648,11 @@ def build_morgan_bit_memberships(
     Folded Morgan bit collisions are unioned across contributing environments, matching the
     reference FPPool implementation.
     """
-    bit_info: dict[int, tuple[tuple[int, int], ...]] = {}
-    rdMolDescriptors.GetMorganFingerprintAsBitVect(
-        mol, radius=radius, nBits=nbits, bitInfo=bit_info
-    )
+    generator = GetMorganGenerator(radius=radius, fpSize=nbits)
+    additional_output = AdditionalOutput()
+    additional_output.AllocateBitInfoMap()
+    generator.GetFingerprint(mol, additionalOutput=additional_output)
+    bit_info: dict[int, tuple[tuple[int, int], ...]] = additional_output.GetBitInfoMap()
 
     memberships: list[FPPoolBitMembership] = []
     for family_bit_index, environments in sorted(bit_info.items()):
@@ -682,8 +686,11 @@ def build_rdkit_bit_memberships(
     bit_offset: int = 0,
 ) -> tuple[FPPoolBitMembership, ...]:
     """Build active RDKit path-fingerprint memberships with explicit atom-and-bond provenance."""
-    bit_info: dict[int, list[list[int]]] = {}
-    RDKFingerprint(mol, fpSize=nbits, minPath=min_path, maxPath=max_path, bitInfo=bit_info)
+    generator = GetRDKitFPGenerator(fpSize=nbits, minPath=min_path, maxPath=max_path)
+    additional_output = AdditionalOutput()
+    additional_output.AllocateBitPaths()
+    generator.GetFingerprint(mol, additionalOutput=additional_output)
+    bit_info: dict[int, tuple[tuple[int, ...], ...]] = additional_output.GetBitPaths()
 
     memberships: list[FPPoolBitMembership] = []
     for family_bit_index, bond_paths in sorted(bit_info.items()):
