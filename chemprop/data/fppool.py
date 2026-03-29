@@ -26,8 +26,9 @@ class FPPoolConfig:
         The number of folded Morgan fingerprint bits.
     morgan_radius : int, default=2
         The Morgan fingerprint radius.
-    atoms_repr : bool, default=False
-        Reserved for future parity with the reference implementation's synthetic atom family.
+    atoms_repr : bool, default=True
+        Whether to prepend the synthetic atomic special family used by the reference FPPool
+        implementation. When enabled, this contributes a leading all-atoms membership column.
     schema_version : str, default="1"
         A small cache-schema discriminator used as part of cache identity and metadata.
     """
@@ -35,13 +36,15 @@ class FPPoolConfig:
     family_names: tuple[str, ...] = ("morgan",)
     morgan_nbits: int = 1024
     morgan_radius: int = 2
-    atoms_repr: bool = False
+    atoms_repr: bool = True
     schema_version: str = "1"
 
     @property
     def family_lengths(self) -> np.ndarray:
-        """The ordered family bit counts for the configured fingerprint families."""
+        """The ordered family bit counts for the active FPPool families."""
         lengths = []
+        if self.atoms_repr:
+            lengths.append(1)
         for family_name in self.family_names:
             if family_name == "morgan":
                 lengths.append(self.morgan_nbits)
@@ -50,9 +53,17 @@ class FPPoolConfig:
 
         return np.asarray(lengths, dtype=int)
 
+    @property
+    def active_family_names(self) -> list[str]:
+        """The ordered active FPPool family names."""
+        family_names = list(self.family_names)
+        if self.atoms_repr:
+            return ["atoms", *family_names]
+        return family_names
+
     def to_metadata(self) -> dict[str, object]:
         metadata = asdict(self)
-        metadata["family_names"] = list(self.family_names)
+        metadata["family_names"] = self.active_family_names
         metadata["family_lengths"] = self.family_lengths.tolist()
         return metadata
 
@@ -111,7 +122,7 @@ def save_fppool_cache(
     cache_dir = Path(cache_dir)
     metadata = {
         "dataset_path": str(Path(dataset_path).resolve()),
-        "family_names": list(config.family_names),
+        "family_names": config.active_family_names,
         "family_lengths": config.family_lengths.tolist(),
         "config": config.to_metadata(),
         "num_datapoints": len(atom_fps),
@@ -140,7 +151,7 @@ def load_fppool_cache(
     family_names = list(metadata["family_names"])
     family_lengths = np.asarray(metadata["family_lengths"], dtype=int)
 
-    if family_names != list(config.family_names):
+    if family_names != config.active_family_names:
         raise ValueError("Cached FPPool family names do not match the requested configuration.")
     if not np.array_equal(family_lengths, config.family_lengths):
         raise ValueError("Cached FPPool family lengths do not match the requested configuration.")
@@ -188,6 +199,28 @@ def build_morgan_atom_fp(mol: Chem.Mol, radius: int = 2, nbits: int = 1024) -> n
     return atom_fp
 
 
+def build_atoms_repr_atom_fp(mol: Chem.Mol) -> np.ndarray:
+    """Build the synthetic atomic special family membership matrix."""
+    return np.ones((mol.GetNumAtoms(), 1), dtype=bool)
+
+
+def build_fppool_atom_fp(mol: Chem.Mol, config: FPPoolConfig) -> np.ndarray:
+    """Build the concatenated FPPool atom-membership matrix for one molecule."""
+    family_blocks: list[np.ndarray] = []
+    if config.atoms_repr:
+        family_blocks.append(build_atoms_repr_atom_fp(mol))
+
+    for family_name in config.family_names:
+        if family_name == "morgan":
+            family_blocks.append(
+                build_morgan_atom_fp(mol, radius=config.morgan_radius, nbits=config.morgan_nbits)
+            )
+        else:
+            raise ValueError(f"Unsupported FPPool family '{family_name}'.")
+
+    return np.concatenate(family_blocks, axis=1)
+
+
 def load_or_create_fppool_atom_fps(
     mols: list[Chem.Mol],
     dataset_path: PathLike,
@@ -202,12 +235,9 @@ def load_or_create_fppool_atom_fps(
     if meta_path.exists() and atom_fp_path.exists():
         return load_fppool_cache(cache_dir, dataset_path, config)
 
-    atom_fps = [
-        build_morgan_atom_fp(mol, radius=config.morgan_radius, nbits=config.morgan_nbits)
-        for mol in mols
-    ]
+    atom_fps = [build_fppool_atom_fp(mol, config) for mol in mols]
     save_fppool_cache(cache_dir, atom_fps, dataset_path, config)
-    return atom_fps, config.family_lengths, list(config.family_names)
+    return atom_fps, config.family_lengths, config.active_family_names
 
 
 def apply_fppool_metadata(

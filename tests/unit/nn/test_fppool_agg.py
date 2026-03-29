@@ -18,6 +18,15 @@ def make_fppool_batch(atom_fp: Tensor) -> FPPoolBatch:
     )
 
 
+def make_atoms_repr_fppool_batch(atom_fp: Tensor) -> FPPoolBatch:
+    return FPPoolBatch(
+        atom_fp=atom_fp.bool(),
+        fp_family_lengths=torch.tensor([1, 3], dtype=torch.long),
+        fp_family_names=["atoms", "morgan"],
+        molecule_atom_slices=torch.tensor([0, 3, 5], dtype=torch.long),
+    )
+
+
 def test_fppool_aggregation_requires_context():
     agg = FPPoolAggregation()
     H = torch.randn(5, 4)
@@ -87,6 +96,32 @@ def test_fppool_family_slicing_and_zero_membership_groups_are_safe():
         torch.tensor([[True, False], [True, False]], dtype=torch.bool),
     )
     assert not agg.last_attention_state.inter_masks[1].any()
+
+
+def test_fppool_aggregation_consumes_atoms_repr_as_leading_family():
+    agg = FPPoolAggregation()
+    H = torch.randn(5, 4)
+    batch = torch.tensor([0, 0, 0, 1, 1], dtype=torch.long)
+    atom_fp = torch.tensor(
+        [
+            [1, 1, 0, 1],
+            [1, 0, 1, 0],
+            [1, 0, 0, 1],
+            [1, 1, 0, 0],
+            [1, 0, 1, 0],
+        ],
+        dtype=torch.bool,
+    )
+    fppool_batch = make_atoms_repr_fppool_batch(atom_fp)
+
+    pooled = agg(H, batch, fppool_batch=fppool_batch)
+
+    assert pooled.shape == (2, 4)
+    assert torch.isfinite(pooled).all()
+    assert agg.last_attention_state is not None
+    assert agg.last_attention_state.global_mask.shape == (2, 2)
+    assert agg.last_attention_state.inter_masks[0].shape == (2, 1)
+    assert agg.last_attention_state.inter_masks[0].all()
 
 
 @dataclass

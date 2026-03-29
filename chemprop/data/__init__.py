@@ -29,6 +29,8 @@ from .datasets import (
 from .fppool import (
     FPPoolConfig,
     apply_fppool_metadata,
+    build_atoms_repr_atom_fp,
+    build_fppool_atom_fp,
     build_morgan_atom_fp,
     derive_fppool_cache_dir,
     derive_fppool_cache_key,
@@ -66,6 +68,8 @@ __all__ = [
     "MolGraphDataset",
     "MolGraph",
     "FPPoolConfig",
+    "build_atoms_repr_atom_fp",
+    "build_fppool_atom_fp",
     "build_morgan_atom_fp",
     "morgan_bit_environment_atom_indices",
     "derive_fppool_cache_key",

@@ -52,11 +52,10 @@ milestone-1 path:
 
 * molecule-only inputs
 * single-component inputs
-* Morgan-only fingerprint memberships
+* Morgan fingerprint memberships with the synthetic atomic special family
 
 Current exclusions for :code:`fppool` are:
 
-* no synthetic :code:`atoms_repr` family yet
 * no RDKit or PubChem fingerprint families yet
 * no reaction inputs
 * no multicomponent molecule inputs
