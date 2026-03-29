@@ -1,10 +1,11 @@
-from . import data, exceptions, featurizers, models, nn, schedulers, uncertainty, utils
+from . import data, exceptions, featurizers, interpret, models, nn, schedulers, uncertainty, utils
 
 __all__ = [
     "data",
     "featurizers",
     "models",
     "nn",
+    "interpret",
     "utils",
     "exceptions",
     "schedulers",

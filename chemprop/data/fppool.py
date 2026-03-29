@@ -15,6 +15,57 @@ from chemprop.data.datapoints import MoleculeDatapoint
 
 
 @dataclass(frozen=True, slots=True)
+class FPPoolBitMembership:
+    """Atom-and-bond membership metadata for one concatenated FPPool bit.
+
+    Parameters
+    ----------
+    family_name : str
+        The fingerprint family name associated with this membership.
+    family_index : int
+        The index of the fingerprint family in the concatenated family ordering.
+    family_bit_index : int
+        The bit index within the local fingerprint family.
+    global_bit_index : int
+        The bit index within the full concatenated FPPool matrix.
+    atom_indices : tuple[int, ...]
+        The ordered atom indices participating in the bit membership.
+    bond_indices : tuple[int, ...]
+        The ordered bond indices participating in the bit membership.
+    """
+
+    family_name: str
+    family_index: int
+    family_bit_index: int
+    global_bit_index: int
+    atom_indices: tuple[int, ...]
+    bond_indices: tuple[int, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FPPoolMoleculeProvenance:
+    """Per-molecule FPPool provenance for interpretability and visualization.
+
+    Parameters
+    ----------
+    family_names : tuple[str, ...]
+        The ordered fingerprint family names used for the concatenated FPPool matrix.
+    family_lengths : tuple[int, ...]
+        The ordered bit counts for the active fingerprint families.
+    bit_memberships : tuple[FPPoolBitMembership, ...]
+        The active bit memberships keyed by their concatenated bit indices.
+    """
+
+    family_names: tuple[str, ...]
+    family_lengths: tuple[int, ...]
+    bit_memberships: tuple[FPPoolBitMembership, ...]
+
+    def membership_map(self) -> dict[int, FPPoolBitMembership]:
+        """Return the active memberships keyed by global bit index."""
+        return {membership.global_bit_index: membership for membership in self.bit_memberships}
+
+
+@dataclass(frozen=True, slots=True)
 class FPPoolConfig:
     """Configuration for FPPool atom-membership generation.
 
@@ -70,18 +121,13 @@ class FPPoolConfig:
 
 def derive_fppool_cache_key(dataset_path: PathLike, config: FPPoolConfig) -> str:
     """Build a stable cache key from the dataset path and FPPool configuration."""
-    payload = {
-        "dataset_path": str(Path(dataset_path).resolve()),
-        "config": config.to_metadata(),
-    }
+    payload = {"dataset_path": str(Path(dataset_path).resolve()), "config": config.to_metadata()}
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
     return digest[:16]
 
 
 def derive_fppool_cache_dir(
-    dataset_path: PathLike,
-    config: FPPoolConfig,
-    cache_root: PathLike | None = None,
+    dataset_path: PathLike, config: FPPoolConfig, cache_root: PathLike | None = None
 ) -> Path:
     """Return the cache directory for a dataset/config pair."""
     root = Path(".cache") / "fppool" if cache_root is None else Path(cache_root)
@@ -113,10 +159,7 @@ def _save_npz_atomic(path: Path, atom_fps: list[np.ndarray]) -> None:
 
 
 def save_fppool_cache(
-    cache_dir: PathLike,
-    atom_fps: list[np.ndarray],
-    dataset_path: PathLike,
-    config: FPPoolConfig,
+    cache_dir: PathLike, atom_fps: list[np.ndarray], dataset_path: PathLike, config: FPPoolConfig
 ) -> None:
     """Save a directory-based FPPool cache for local single-process use."""
     cache_dir = Path(cache_dir)
@@ -132,9 +175,7 @@ def save_fppool_cache(
 
 
 def load_fppool_cache(
-    cache_dir: PathLike,
-    dataset_path: PathLike,
-    config: FPPoolConfig,
+    cache_dir: PathLike, dataset_path: PathLike, config: FPPoolConfig
 ) -> tuple[list[np.ndarray], np.ndarray, list[str]]:
     """Load a cached set of atom-membership arrays and validate core metadata."""
     cache_dir = Path(cache_dir)
@@ -178,23 +219,59 @@ def morgan_bit_environment_atom_indices(
     return tuple(sorted(atom_indices))
 
 
-def build_morgan_atom_fp(mol: Chem.Mol, radius: int = 2, nbits: int = 1024) -> np.ndarray:
-    """Build a dense atom-to-bit membership matrix from Morgan provenance."""
+def morgan_bit_environment_bond_indices(
+    mol: Chem.Mol, atom_idx: int, radius: int
+) -> tuple[int, ...]:
+    """Return the bond indices participating in a Morgan bit environment."""
+    bond_environment = Chem.FindAtomEnvironmentOfRadiusN(mol, radius, atom_idx)
+    return tuple(sorted(bond_environment))
+
+
+def build_morgan_bit_memberships(
+    mol: Chem.Mol,
+    radius: int = 2,
+    nbits: int = 1024,
+    family_name: str = "morgan",
+    family_index: int = 0,
+    bit_offset: int = 0,
+) -> tuple[FPPoolBitMembership, ...]:
+    """Build active Morgan bit memberships with explicit atom-and-bond provenance.
+
+    Folded Morgan bit collisions are unioned across contributing environments, matching the
+    reference FPPool implementation.
+    """
     bit_info: dict[int, tuple[tuple[int, int], ...]] = {}
     rdMolDescriptors.GetMorganFingerprintAsBitVect(
-        mol,
-        radius=radius,
-        nBits=nbits,
-        bitInfo=bit_info,
+        mol, radius=radius, nBits=nbits, bitInfo=bit_info
     )
 
-    atom_fp = np.zeros((mol.GetNumAtoms(), nbits), dtype=bool)
-    for bit_idx, environments in bit_info.items():
+    memberships: list[FPPoolBitMembership] = []
+    for family_bit_index, environments in sorted(bit_info.items()):
+        atom_indices: set[int] = set()
+        bond_indices: set[int] = set()
         for atom_idx, env_radius in environments:
-            atom_indices = morgan_bit_environment_atom_indices(mol, atom_idx, env_radius)
-            # Folded Morgan bits can map multiple environments onto the same column. The reference
-            # FPPool implementation unions those memberships, so we do the same here.
-            atom_fp[list(atom_indices), bit_idx] = True
+            atom_indices.update(morgan_bit_environment_atom_indices(mol, atom_idx, env_radius))
+            bond_indices.update(morgan_bit_environment_bond_indices(mol, atom_idx, env_radius))
+
+        memberships.append(
+            FPPoolBitMembership(
+                family_name=family_name,
+                family_index=family_index,
+                family_bit_index=family_bit_index,
+                global_bit_index=bit_offset + family_bit_index,
+                atom_indices=tuple(sorted(atom_indices)),
+                bond_indices=tuple(sorted(bond_indices)),
+            )
+        )
+
+    return tuple(memberships)
+
+
+def build_morgan_atom_fp(mol: Chem.Mol, radius: int = 2, nbits: int = 1024) -> np.ndarray:
+    """Build a dense atom-to-bit membership matrix from Morgan provenance."""
+    atom_fp = np.zeros((mol.GetNumAtoms(), nbits), dtype=bool)
+    for membership in build_morgan_bit_memberships(mol, radius=radius, nbits=nbits):
+        atom_fp[list(membership.atom_indices), membership.family_bit_index] = True
 
     return atom_fp
 
@@ -219,6 +296,51 @@ def build_fppool_atom_fp(mol: Chem.Mol, config: FPPoolConfig) -> np.ndarray:
             raise ValueError(f"Unsupported FPPool family '{family_name}'.")
 
     return np.concatenate(family_blocks, axis=1)
+
+
+def build_fppool_molecule_provenance(
+    mol: Chem.Mol, config: FPPoolConfig
+) -> FPPoolMoleculeProvenance:
+    """Build explicit atom-and-bond provenance for the active FPPool families of one molecule."""
+    bit_memberships: list[FPPoolBitMembership] = []
+    family_index = 0
+    bit_offset = 0
+
+    if config.atoms_repr:
+        bit_memberships.append(
+            FPPoolBitMembership(
+                family_name="atoms",
+                family_index=family_index,
+                family_bit_index=0,
+                global_bit_index=bit_offset,
+                atom_indices=tuple(range(mol.GetNumAtoms())),
+                bond_indices=tuple(),
+            )
+        )
+        family_index += 1
+        bit_offset += 1
+
+    for family_name in config.family_names:
+        if family_name == "morgan":
+            memberships = build_morgan_bit_memberships(
+                mol,
+                radius=config.morgan_radius,
+                nbits=config.morgan_nbits,
+                family_name=family_name,
+                family_index=family_index,
+                bit_offset=bit_offset,
+            )
+            bit_memberships.extend(memberships)
+            bit_offset += config.morgan_nbits
+            family_index += 1
+        else:
+            raise ValueError(f"Unsupported FPPool family '{family_name}'.")
+
+    return FPPoolMoleculeProvenance(
+        family_names=tuple(config.active_family_names),
+        family_lengths=tuple(int(length) for length in config.family_lengths.tolist()),
+        bit_memberships=tuple(bit_memberships),
+    )
 
 
 def load_or_create_fppool_atom_fps(
@@ -253,11 +375,15 @@ def apply_fppool_metadata(
     )
 
     if len(atom_fps) != len(datapoints):
-        raise ValueError("Number of cached/generated FPPool atom memberships must match datapoints.")
+        raise ValueError(
+            "Number of cached/generated FPPool atom memberships must match datapoints."
+        )
 
     for datapoint, atom_fp in zip(datapoints, atom_fps):
         if atom_fp.shape[0] != datapoint.mol.GetNumAtoms():
-            raise ValueError("FPPool atom memberships must contain one row per atom in the datapoint.")
+            raise ValueError(
+                "FPPool atom memberships must contain one row per atom in the datapoint."
+            )
 
         datapoint.atom_fp = atom_fp
         datapoint.fp_family_lengths = family_lengths.copy()

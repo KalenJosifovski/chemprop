@@ -3,10 +3,14 @@ from pandas import DataFrame
 
 from chemprop.cli.utils import build_data_from_files
 from chemprop.data import (
+    FPPoolBitMembership,
     FPPoolConfig,
+    FPPoolMoleculeProvenance,
     build_atoms_repr_atom_fp,
     build_fppool_atom_fp,
+    build_fppool_molecule_provenance,
     build_morgan_atom_fp,
+    build_morgan_bit_memberships,
     derive_fppool_cache_dir,
     derive_fppool_cache_key,
     load_or_create_fppool_atom_fps,
@@ -55,6 +59,37 @@ def test_build_fppool_atom_fp_prepends_atoms_repr_family():
         atom_fp[:, 1:],
         build_morgan_atom_fp(mol, radius=config.morgan_radius, nbits=config.morgan_nbits),
     )
+
+
+def test_build_morgan_bit_memberships_include_bond_indices():
+    mol = make_mol("CCO", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+
+    memberships = build_morgan_bit_memberships(mol, radius=2, nbits=32)
+
+    assert memberships
+    assert all(isinstance(membership, FPPoolBitMembership) for membership in memberships)
+    assert all(membership.family_name == "morgan" for membership in memberships)
+    assert all(
+        membership.global_bit_index == membership.family_bit_index for membership in memberships
+    )
+    assert any(len(membership.bond_indices) > 0 for membership in memberships)
+
+
+def test_build_fppool_molecule_provenance_includes_atoms_repr_and_family_metadata():
+    mol = make_mol("CCO", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)
+    config = FPPoolConfig(morgan_nbits=32, morgan_radius=2, atoms_repr=True)
+
+    provenance = build_fppool_molecule_provenance(mol, config)
+
+    assert isinstance(provenance, FPPoolMoleculeProvenance)
+    assert provenance.family_names == ("atoms", "morgan")
+    assert provenance.family_lengths == (1, 32)
+
+    membership_map = provenance.membership_map()
+    atoms_membership = membership_map[0]
+    assert atoms_membership.family_name == "atoms"
+    assert atoms_membership.atom_indices == tuple(range(mol.GetNumAtoms()))
+    assert atoms_membership.bond_indices == tuple()
 
 
 def test_load_or_create_fppool_atom_fps_round_trips_cache(tmp_path):
