@@ -5,6 +5,7 @@ import torch
 from chemprop.data import FPPoolBatch, FPPoolConfig, build_fppool_atom_fp
 from chemprop.interpret import (
     draw_fppool_bit_highlight,
+    draw_fppool_inner_family_grid,
     draw_fppool_inner_explanations,
     extract_fppool_explanation,
     plot_fppool_global_weights,
@@ -75,13 +76,48 @@ def test_draw_and_plot_helpers_return_renderable_objects():
         mols[0], explanation.inner_explanations[0], image_size=(200, 200)
     )
     gallery = draw_fppool_inner_explanations(mols[0], explanation, top_k=2, image_size=(150, 150))
-    inter_fig = plot_fppool_inter_summary(explanation, top_k_bits=2)
-    global_fig = plot_fppool_global_weights(explanation)
+    inner_grid_fig = draw_fppool_inner_family_grid(mols[0], explanation, top_k_bits=2)
+    inter_fig = plot_fppool_inter_summary(
+        mols[0], explanation, top_k_bits=2, exclude_family_names=("atoms",)
+    )
+    global_fig = plot_fppool_global_weights(mols[0], explanation, exclude_family_names=("atoms",))
 
     assert isinstance(image, Image.Image)
     assert image.size == (200, 200)
     assert len(gallery) == min(2, len(explanation.inner_explanations))
     assert all(isinstance(rendered, Image.Image) for rendered in gallery)
+    assert isinstance(inner_grid_fig, Figure)
+    assert isinstance(inter_fig, Figure)
+    assert isinstance(global_fig, Figure)
+
+
+def test_multilevel_helpers_can_exclude_atoms_family():
+    mols = [make_mol("CCO", keep_h=False, add_h=False, ignore_stereo=False, reorder_atoms=False)]
+    config = FPPoolConfig(
+        family_names=("morgan", "rdkit", "pubchem"),
+        morgan_nbits=32,
+        rdkit_nbits=64,
+        atoms_repr=True,
+    )
+    fppool_batch = _make_real_fppool_batch(mols, config)
+    H = torch.randn(fppool_batch.atom_fp.shape[0], 8)
+    batch = torch.zeros(fppool_batch.atom_fp.shape[0], dtype=torch.long)
+
+    aggregation = FPPoolAggregation()
+    aggregation(H, batch, fppool_batch=fppool_batch)
+    explanation = extract_fppool_explanation(aggregation, mols, fppool_batch, config, top_k_bits=2)[
+        0
+    ]
+
+    inner_grid_fig = draw_fppool_inner_family_grid(
+        mols[0], explanation, top_k_bits=2, exclude_family_names=("atoms",)
+    )
+    inter_fig = plot_fppool_inter_summary(
+        mols[0], explanation, top_k_bits=2, exclude_family_names=("atoms",)
+    )
+    global_fig = plot_fppool_global_weights(mols[0], explanation, exclude_family_names=("atoms",))
+
+    assert isinstance(inner_grid_fig, Figure)
     assert isinstance(inter_fig, Figure)
     assert isinstance(global_fig, Figure)
 
