@@ -25,6 +25,7 @@ Model Modules:
 * :doc:`models/basic_mpnn_model`
 * :doc:`models/message_passing`
 * :doc:`models/aggregation`
+* :doc:`models/interpretability`
 * :doc:`models/predictor`
 * :doc:`models/multicomponent_mpnn_model`
 
@@ -53,6 +54,7 @@ Other module and workflow tutorials:
     models/basic_mpnn_model
     models/message_passing
     models/aggregation
+    models/interpretability
     models/predictor
     models/multicomponent_mpnn_model
     activation
